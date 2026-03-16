@@ -1,5 +1,8 @@
 **Industrial-Extruder-Sim_HMI_Nextion_PIC16_DHT11**
 
+Bare-Metal Implementation: This project operates entirely at the register level without external dependencies.  
+The firmware is fully optimized for the PIC16F628A, maintaining a lean footprint with 12% ROM remaining for future feature expansion.    
+
 An industrial-grade HMI simulation of a *Reifenhäuser-style* plastic extruder line.   
 This project integrates a PIC16F628A microcontroller with a Nextion Intelligent Series HMI to provide real-time process monitoring, motor control, and safety-critical alarm handling.  
 
@@ -18,7 +21,7 @@ This project simulates real-world industrial extrusion processes, featuring:
 
 📂 Project Structure  
 /HMI_Nextion: Contains the .HMI source file, the ready-to-flash .TFT binary and a folder with screenshots.  
-/PIC_Source: MikroC project files, source code, and compiled .hex.  
+/PIC_Source: MikroC project files with compiled .hex, source code, and Fuse bits setup.  
 
 ⚙ Operational Flow  
 * Normal Operation: System runs with animated motor feedback and live sensor plots.  
