@@ -22,6 +22,7 @@ This project simulates real-world industrial extrusion processes, featuring:
 📂 Project Structure  
 /HMI_Nextion: Contains the .HMI source file, the ready-to-flash .TFT binary and a folder with screenshots.  
 /PIC_Source: MikroC project files with compiled .hex, source code, and Fuse bits setup.  
+/Photos: Just some project photos.
 
 ⚙ Operational Flow  
 * Normal Operation: System runs with animated motor feedback and live sensor plots.  
