@@ -18,10 +18,14 @@
 // 8 bits duty cicle:
 // TMR2 = PR2 + 1 (when TMR2 overflows, LOW to HIGH)/ CCPR1L:CCP1CON<5:4>
 
-sbit sensorData at RA0_bit;                                                     // DHT11 sensor  (humidity + temperature)
-sbit oven at RB5_bit;                                                           // power on/ off the system
-sbit DataDir at TRISA0_bit;                                                     // dinamic I/O configuration
-#define BUFFER_SIZE 4                                                           // to store the received UART string + null terminator
+
+sbit PWM_OUT at RB3_bit;                                                        // Pin9: PWM control output
+sbit POWER at RB5_bit;                                                          // Pin11: power on/ off indicator
+sbit SENSOR_DATA at RA0_bit;                                                    // Pin17: DHT11 sensor (humidity + temperature)
+sbit DATA_DIR at TRISA0_bit;                                                    // Dinamic I/O configuration
+
+#define WAIT_TIME   1200                                                        // Empiric value, adj to avoid CheckSum error: DHT11 sensor read cycle can't be faster than 1s
+#define BUFFER_SIZE 4                                                           // Store the received UART string + null terminator
 #define OFFSET_TEMP 2                                                           // Temperature offset for DHT11 sensor
 #define OFFSET_HUM  7                                                           // Humidity offset for DHT11 sensor
 
@@ -41,69 +45,72 @@ void cleanBuffer();
 //------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------//
 //Global variables
 
-unsigned short TOUT = 0, CheckSum;
+unsigned short TOUT = 0, CheckSum;                                              // TOUT = time out
 unsigned short T_Byte1, T_Byte2, RH_Byte1, RH_Byte2;
-char TEMP[3] = " ";
-char buffer[BUFFER_SIZE], REC, index = 0;
-char pwmBuffer[4] = "000";                                // Buffer to store PWM value string
-char i, PWMVALUE = 0x7F;                                  // start the PWM at HMI as 50%  (127)
-volatile unsigned char uartDataReady = 0;                 // Global flag to indicate new UART data received
-unsigned int sensorTick = 0;      // Local counter
+char TEMP[3] = " ", buffer[BUFFER_SIZE], REC, index = 0;                        // REC = received
+char pwmBuffer[4] = "000";                                                      // Buffer to store PWM value string
+char i, PWM_VALUE = 0x00;                                                       // PWM_VALUE: process the data received from HMI
+volatile unsigned char uartDataReady = 0;                                       // Flag to indicate new UART data received
+unsigned int sensorTick = 0;                                                    // Local counter to control DHT11 read cycle
 
 //------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------//
 //UART interruption
 void interrupt(){
-    if(RCIF_bit) {                                                              // interrupt occurred on USART receive
-       REC = RCREG;
-       RCIF_bit = 0;                                                            // clear the interrupt flag
+    if(RCIF_bit) {                                                              // Interrupt occurred on USART receive
+        if(OERR_bit) {                                                          // Check for overrun error FIRST
+            CREN_bit = 0;                                                       // Reset the receiver logic
+            CREN_bit = 1;
+            REC = RCREG;                                                        // Clear the FIFO
+            return;                                                             // Exit interrupt handler
+        }
 
-        if(FERR_bit || OERR_bit) {                                              // framing or overrun error
-           CREN_bit = 0;                                                        // reset the receiver
-           CREN_bit = 1;
-           return;                                                              // exit interrupt handler
-          }
-         
+        if(FERR_bit) {                                                          // Check for framing error
+            REC = RCREG;                                                        // Discard the corrupted byte
+            return;
+        }
 
-        if((REC >= '0' && REC <= '9')) {                                        // ONLY store characters that are numbers or valid command starts. This ignores the Nextion's 0x65, 0xFF, and 0x00 status bytes
+        REC = RCREG;                                                            // Read the data (clears RCIF_bit when finish)
+
+        if((REC >= '0' && REC <= '9')) {                                        // ONLY store characters that are numbers.
           if(index < BUFFER_SIZE - 1) {
-             buffer[index++] = REC;                                               // store received character
-             buffer[index] = '\0';                                                // null-terminate the string
+             buffer[index++] = REC;                                             // Store received character
+             buffer[index] = '\0';                                              // Null-terminate the string
             }
           }
 
-        if(index == 3){                                                         // full string received (without null terminator)
-            if(strcmp(buffer, "300") == 0){                                     // Run
-               RB5_bit = 1;
+        if(index == 3){                                                         // Full string received (without null terminator)
+            if(strcmp(buffer, "300") == 0){                                     // "RUN" command received
+               POWER = 1;
                CCP1CON = 0x0C;                                                  // Restore PWM
-               uartDataReady = 1;                                               // set flag to indicate data received
+               uartDataReady = 1;                                               // Set flag to indicate data received
             }
-                else if(strcmp(buffer, "400") == 0){                            // Stop
-                   RB5_bit = 0;
+                else if(strcmp(buffer, "400") == 0){                            // "STOP" command received
+                   POWER = 0;
                    CCP1CON = 0x00;                                              // Kill PWM
-                   RB3_bit = 0;                                                 // Ensure 0V
+                   PWM_OUT = 0;                                                 // Ensure 0V
                    uartDataReady = 1;
                 }
 
-                else if(strcmp(buffer, "500") == 0){                            // Emergency stop
-                   RB5_bit = 0;                                                 // Stop
+                else if(strcmp(buffer, "500") == 0){                            // "EMERGENCY STOP" command received
+                   POWER = 0;                                                   // Stop
                    CCP1CON = 0x00;                                              // Kill PWM
-                   RB3_bit = 0;                                                 // Ensure 0V
+                   PWM_OUT = 0;                                                 // Ensure 0V
                    uartDataReady = 1;
                 }
 
             else{
             strcpy(pwmBuffer, buffer);                                          // 0-100 = update pwmBuffer
-            uartDataReady = 1;                                                  // set flag to indicate data received
+            uartDataReady = 1;                                                  // Set flag to indicate data received
           }
-           index = 0; 
-        }                                                          // reset buffer index for next string
+           index = 0;                                                           // Reset buffer index for next string
+        }
     }
 
-    if(PIR1.TMR1IF){                                                            // interrupt after 256us (sensor time out)
-       PIR1.TMR1IF  = 0;                                                        // clear the interrupt flag
-       TOUT = 1;                                                                // set the time out flag
-       T1CON.TMR1ON = 0;                                                        // stop TMR1
-       sensorData    = 1;
+    if(PIR1.TMR1IF){                                                            // Interrupt after 256us (sensor time out)
+       PIR1.TMR1IF  = 0;                                                        // Clear the interrupt flag
+       TOUT = 1;                                                                // Set the time out flag
+       T1CON.TMR1ON = 0;                                                        // Stop TMR1
+       SENSOR_DATA  = 1;                                                        // Set pin17 to HIGH
       }
 }
 
@@ -141,12 +148,12 @@ void main() {
   while(1){
 
     if(uartDataReady){
-        PWMVALUE = atoi(pwmBuffer);  // Update PWMVALUE with the received string
+        PWM_VALUE = atoi(pwmBuffer);                                            // Update PWM_VALUE with the received string conv to int
         uartDataReady = 0;
         PWM();
     }
     sensorTick++;
-    if(sensorTick > 1200) {                                                   // Adjust this number to get ~2 seconds 1000
+    if(sensorTick > WAIT_TIME) {                                                // minimal time between DHT11 reading = 1s
         StartSignal();
         sensor();
         sensorTick = 0;
@@ -158,20 +165,20 @@ void main() {
 //------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------//
 //Send data to the HMI main page + update the graphs
 void PWM() {
-     CCPR1L = PWMVALUE;                                                            // the PWM output is updated
-     TEMP[0]= ((int)(PWMVALUE/2.53)/100%10) + 48;                                  // Send variable data to IHM Nextion. 2.53 is only to convert into percentage at slider.
-     TEMP[1]= ((int)(PWMVALUE/2.53)/10%10) + 48;
-     TEMP[2]= ((int)(PWMVALUE/2.53)%10) + 48;
+     CCPR1L = PWM_VALUE;                                                            // the PWM output is updated
+     TEMP[0]= ((int)(PWM_VALUE/2.53)/100%10) + 48;                                  // Send variable data to IHM Nextion. 2.53 is only to convert into percentage at slider.
+     TEMP[1]= ((int)(PWM_VALUE/2.53)/10%10) + 48;
+     TEMP[2]= ((int)(PWM_VALUE/2.53)%10) + 48;
      sendPWM();
 
 }
 
 //------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------//
  void StartSignal(){
-      DataDir = 0;
-      sensorData  = 0;
+      DATA_DIR = 0;
+      SENSOR_DATA  = 0;
       Delay_ms(18);    // Low for at least 18us     18
-      sensorData    = 1;
+      SENSOR_DATA    = 1;
 
       T1CON       = 0x00;               // prescaler 1:1, and Timer1 is off initially
       PIR1.TMR1IF = 0x00;               // clear TMR INT Flag bit
@@ -180,7 +187,7 @@ void PWM() {
       T1CON.TMR1ON = 1;
 
       if(TMR1L == 22){
-         DataDir = 1;     // Data port is input
+         DATA_DIR = 1;     // Data port is input
          T1CON.TMR1ON = 0;
          TMR1L       = 0x00;                // Inicializa o TMR1L em 0
          TMR1H       = 0xFF;                // Inicializa o TMR1H em 255
@@ -194,14 +201,14 @@ unsigned short CheckResponse(){
   TMR1H       = 0xFF;                // Inicializa o TMR1H em 255
   T1CON.TMR1ON = 1;                  // Start TMR1 while waiting for sensor response
   
-  while(!sensorData && !TOUT);       // If there's no response within 256us, the Timer1 overflows
+  while(!SENSOR_DATA && !TOUT);       // If there's no response within 256us, the Timer1 overflows
   if (TOUT) 
      return 0;    // and exit
      
   else {
       TMR1L       = 0x00;                // Inicializa o TMR1L em 0
       TMR1H       = 0xFF;                // Inicializa o TMR1H em 255
-      while(sensorData && !TOUT);
+      while(SENSOR_DATA && !TOUT);
       if (TOUT)
          return 0;
        
@@ -215,14 +222,14 @@ unsigned short CheckResponse(){
 //------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------//
 unsigned short ReadByte(){
   unsigned short num = 0, i;
-  DataDir = 1;
+  DATA_DIR = 1;
   
   for (i=0; i<8; i++){
-       while(!sensorData);
+       while(!SENSOR_DATA);
        TMR1L       = 0x00;                // Inicializa o TMR1L em 0
        TMR1H       = 0xFF;                // Inicializa o TMR1H em 255
        T1CON.TMR1ON = 1;  // Start TMR2 from 0 when a low to high data pulse
-       while(sensorData);       // is detected, and wait until it falls low again.
+       while(SENSOR_DATA);       // is detected, and wait until it falls low again.
        T1CON.TMR1ON = 0;  // Stop the TMR2 when the data pulse falls low.
        
        if(TMR1L > 40) 
@@ -245,9 +252,9 @@ void sensor(){
     TXREG = '1'; cleanBuffer(); // Set er0 to 1 (NOK)
     TXREG = 0xFF; cleanBuffer(); TXREG = 0xFF; cleanBuffer(); TXREG = 0xFF; cleanBuffer();
     
-    RB5_bit = 0;
+    POWER = 0;
     CCP1CON = 0x00;                                                             // Kill PWM
-    RB3_bit = 0;                                                                // Ensure 0V
+    PWM_OUT = 0;                                                                // Ensure 0V
   }
 
   else{
