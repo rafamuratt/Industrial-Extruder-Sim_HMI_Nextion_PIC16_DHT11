@@ -50,7 +50,8 @@ unsigned short T_Byte1, T_Byte2, RH_Byte1, RH_Byte2;
 char TEMP[3] = " ", buffer[BUFFER_SIZE], REC, index = 0;                        // REC = received
 char pwmBuffer[4] = "000";                                                      // Buffer to store PWM value string
 char i, PWM_VALUE = 0x00;                                                       // PWM_VALUE: process the data received from HMI
-volatile unsigned char uartDataReady = 0;                                       // Flag to indicate new UART data received
+volatile unsigned char uartDataReady = 0;                                       // Flag to indicate new UART data received. Volatile forces RAM check every single loop cycle
+volatile char emergencyState = 0, sensorError = 0;                              // 1 = emergency button is pressed/ DHT11 sensor with error
 unsigned int sensorTick = 0;                                                    // Local counter to control DHT11 read cycle
 
 //------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------//
@@ -79,29 +80,33 @@ void interrupt(){
           }
 
         if(index == 3){                                                         // Full string received (without null terminator)
-            if(strcmp(buffer, "300") == 0){                                     // "RUN" command received
-               POWER = 1;
-               CCP1CON = 0x0C;                                                  // Restore PWM
-               uartDataReady = 1;                                               // Set flag to indicate data received
+            if(strcmp(buffer, "300") == 0){                                     // "RUN" command received "300"
+               POWER = 1;                                                       // Run indicator = ON
+               CCP1CON = 0x0C;                                                  // Set output, restore the PWM (if disabled)
             }
-                else if(strcmp(buffer, "400") == 0){                            // "STOP" command received
-                   POWER = 0;
-                   CCP1CON = 0x00;                                              // Kill PWM
-                   PWM_OUT = 0;                                                 // Ensure 0V
-                   uartDataReady = 1;
-                }
+            
+            else if(strcmp(buffer, "400") == 0){                                // "STOP" command received "400"
+               POWER = 0;                                                       // Run indicator = OFF
+               CCP1CON = 0x00;                                                  // Cut the output (Kill PWM)
+               PWM_OUT = 0;                                                     // Ensure 0V
+            }
 
-                else if(strcmp(buffer, "500") == 0){                            // "EMERGENCY STOP" command received
-                   POWER = 0;                                                   // Stop
-                   CCP1CON = 0x00;                                              // Kill PWM
-                   PWM_OUT = 0;                                                 // Ensure 0V
-                   uartDataReady = 1;
-                }
+            else if(strcmp(buffer, "500") == 0){                                // "EMERGENCY STOP" command received "500"
+               emergencyState = 1;                                              // Set emergency flag
+               POWER = 0;                                                       // Run indicator = OFF
+               CCP1CON = 0x00;                                                  // Cut the output (Kill PWM)
+               PWM_OUT = 0;                                                     // Ensure 0V
+            }
+            
+            else if(strcmp(buffer, "600") == 0){                                // "ACK" command received "600"
+               if(sensorError) sensorError = 0;
+               //if (emergencyState) emergencyState = 0;
+               else asm goto 0x0000;
+            }
 
-            else{
-            strcpy(pwmBuffer, buffer);                                          // 0-100 = update pwmBuffer
-            uartDataReady = 1;                                                  // Set flag to indicate data received
-          }
+            else strcpy(pwmBuffer, buffer);                                     // 0-100 = update pwmBuffer
+
+           uartDataReady = 1;                                                   // Set flag to indicate data received
            index = 0;                                                           // Reset buffer index for next string
         }
     }
@@ -143,23 +148,37 @@ void main() {
      PORTA       = 0x01;               // RA0 start in HIGH, the rest in LOW
      TRISB       = 0x02;               // RB1 (RX) as input, the rest as output
      PORTB       = 0x02;               // RB1 starts in HIGH, the rest in LOW
+     
+      TXREG = 'r'; cleanBuffer(); TXREG = 'e'; cleanBuffer();
+      TXREG = 's'; cleanBuffer(); TXREG = '.'; cleanBuffer(); TXREG = 'v'; cleanBuffer();
+      TXREG = 'a'; cleanBuffer(); TXREG = 'l'; cleanBuffer(); TXREG = '='; cleanBuffer();
+      TXREG = '1'; cleanBuffer(); // Set res to 1 (reset)
+      TXREG = 0xFF; cleanBuffer(); TXREG = 0xFF; cleanBuffer(); TXREG = 0xFF; cleanBuffer();
 
 
-  while(1){
+     while(1){
+         if(!emergencyState){
+         
+           if(uartDataReady){
+              PWM_VALUE = atoi(pwmBuffer);                                      // Update PWM_VALUE with the received string conv to int
+              uartDataReady = 0;
+              PWM();
+           }
+           sensorTick++;
+           if(sensorTick > WAIT_TIME) {                                         // minimal time between DHT11 reading = 1s
+              StartSignal();
+              sensor();
+              sensorTick = 0;
+           }
+           Delay_ms(1);
+         }
 
-    if(uartDataReady){
-        PWM_VALUE = atoi(pwmBuffer);                                            // Update PWM_VALUE with the received string conv to int
-        uartDataReady = 0;
-        PWM();
-    }
-    sensorTick++;
-    if(sensorTick > WAIT_TIME) {                                                // minimal time between DHT11 reading = 1s
-        StartSignal();
-        sensor();
-        sensorTick = 0;
-    }
-    Delay_ms(1);
-  }
+         else{                                                                  // Force safety (redundant but good)
+           POWER = 0;                                                           // Run indicator = OFF
+           CCP1CON = 0x00;                                                      // Cut the output (Kill PWM)
+           PWM_OUT = 0;                                                         // Ensure 0V
+         }
+     }
 }
 
 //------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------//
@@ -252,9 +271,10 @@ void sensor(){
     TXREG = '1'; cleanBuffer(); // Set er0 to 1 (NOK)
     TXREG = 0xFF; cleanBuffer(); TXREG = 0xFF; cleanBuffer(); TXREG = 0xFF; cleanBuffer();
     
-    POWER = 0;
-    CCP1CON = 0x00;                                                             // Kill PWM
+    POWER = 0;                                                                  // Run indicator = OFF
+    CCP1CON = 0x00;                                                             // Cut the output (Kill PWM)
     PWM_OUT = 0;                                                                // Ensure 0V
+    sensorError = 1;                                                            // Sensor in error state
   }
 
   else{
@@ -264,7 +284,7 @@ void sensor(){
     T_Byte2 = ReadByte();
     CheckSum = ReadByte();
     // Check for error in Data reception
-    if (CheckSum == ((RH_Byte1 + RH_Byte2 + T_Byte1 + T_Byte2) & 0xFF)){
+    if (CheckSum == ((RH_Byte1 + RH_Byte2 + T_Byte1 + T_Byte2) & 0xFF) && !sensorError){
       // SUCCESS: Clear error flag and write in the UART: er0.val=0
       TXREG = 'e'; cleanBuffer(); TXREG = 'r'; cleanBuffer();
       TXREG = '0'; cleanBuffer(); TXREG = '.'; cleanBuffer(); TXREG = 'v'; cleanBuffer();
