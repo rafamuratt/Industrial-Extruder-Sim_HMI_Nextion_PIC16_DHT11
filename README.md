@@ -1,7 +1,5 @@
 **Industrial-Extruder-Sim_HMI_Nextion_PIC16_DHT11**
 
-**Note: overall PIC C code optimization ongoing**
-
 Bare-Metal Implementation: This project operates entirely at the register level without external dependencies.  
 The firmware is fully optimized for the PIC16F628A, maintaining a lean footprint with 16% ROM remaining for future feature expansion.    
 

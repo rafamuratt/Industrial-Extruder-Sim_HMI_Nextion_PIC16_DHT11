@@ -1,43 +1,99 @@
+/* 
+   MURAT-TECH HMI DIGITAL TWIN INTERFACE v.1.00
+   By B.Eng. Rafa Muratt 03.2026
+   MURAT-TECH CHANNEL: https://www.youtube.com/@Murat-TechChannel-EN
+   MURAT-TECH HUB: https://murat-tech.eu/
+   
+   License
+   This project is licensed under the Creative Commons Attribution-ShareAlike 4.0 International (CC BY-SA 4.0).
+   If this project is helpfull for your application, please consider to support:
+   https://www.paypal.com/donate/?hosted_button_id=8S8BJ9TT368VN
+   
+   PIC16F628A @4Mhz (internal oscillator) = 1us machine cycle
+   Digital twin application (9600bps UART communication with the HMI Nextion Intelligent series)
+   No libraries where used, nor strings in order to save memory (bare metal coding + short char commands to the HMI)
+   
+   The following definitions may need your tailored value:
+   WAIT_TIME: empiric data, assure a minimum 1s sensor read period. If faster, the sensor will be flooded = CheckSum error. In my case, 1200 is OK
+   OFFSET_TEMP and OFFSET_HUM: in comparisson with a calibrated thermo-hygrometer, you my need a "kind of calibration" to get the same readings
+   
+   <<< Tasks from MCU: >>>
+   -- On every restart send a reset message to the HMI:
+      res.val=1 (so the HMI knows a reset happen and goes to the "System Stopped" status
+      
+   -- Check the DHT11 sensor "alive" status and update the temperature and humidity
+      It sends to the HMI: 
+      er0.val=1 (sensor error) | er0.val=0 (sensor OK)
+      x0.val=XXX | x1.val=XXX (x0 and x1 are temperature and humidity fields in the main page); XXX = "string" between 000 to 999
+      gr0.val=XXX | gr1.val=XXX (gr0 and gr1 are variables to control the temperature and humidity graphs in the main page; XXX = "string" between 000 to 999
 
-//   4MHz/ 4  = 1MHz (machine cycle)^-1 = 0,000001s  <--> 1us
+   -- Check the hardware emergency button (NC) on pin6
+      In case the emergency is pressed, sends to the HMI:
+      er1.val=1 (shut down outputs, pop up emergency error message and lock the HMI controls
+      To return the operation: release the emergency button, reset the MCU and press the ACK HMI button
+      
+   -- Check the UART data if the following strings are received:
+      "500" (Software based Emergency Stop), the HMI emergency button is pressed and lock the MCU software
+      "600" (ACK received): if there was a sensor error, set the error flag to 0. If there was an emergency stop, reset the MCU (goes to addr 0x0000)
+      "400" (STOP received): PWM_OUT and POWER (indicator) are switched off
+      "300" (RUN received):  PWM_OUT and POWER (indicator) are switched on
+      "000" to "255" (PWM data string): set the MCU PWM accordingly (data sent by the slider adjust + OK button in the HMI, page 1)
+      
+   -- Send the PWM callback "string" to the n0 field in the HMI page1
+      n0.val=XXX (where XXX = "string" between 000 to 255)
+      
+   <<< Tasks from HMI: >>>
+   -- Basically to hear the errors and messages sent by the MCU
+   -- Its own firmware (not included here) has an interlock logic with the MCU and behaves like in the real world.
+   -- It also send the string commands listed above, handle graphics and animations   */
 
+// MCU TIMERS CALCULATION:
+// 4MHz/ 4  = 1MHz (machine cycle)^-1 = 0,000001s
+
+// ========== Timer1 check if the sensor is "alive" + read its data  ==========
+//
 //                     Overflow                      256E-6
 //   TMR1 = --------------------------------   =  ----------  = 256
 //            prescaler x machine cycle            1 x 1E-6
 //
-//   TMR1 = 256      18000
+//   TMR1 = 256
+//   The whole Timer1 register = 65536 - 256 = 65280
+//   TMR1H = (65280/ 256) = 255
+//
+//   Parameters used in startSensor() and sensorAlive() functions:
+//   TMR1H = 255 (0xFF)
+//   TMR1L =  0  (0x00)
 
-//whole TMR1 register = 65536 - 256 = 65280
-//TMR1H = (65280/ 2^8) = 255   (also calculated as 65280 >> 8) shift right is a division
-//TMR1L =
 
-// Timer2 based PWM frequency = 244.14 Hz as follows:
+// =========== Timer2 for PWM frequency @ 244.14 Hz: as follows    ============
 // PWM period = (PR2 + 1) * machine cycle * TMR2 prescaler
-// (255 + 1) * 0,0001s * 16 = 4.096ms ^-1 = 244.14 Hz
-
+// (255 + 1) * 0,000001s * 16 = 4.096ms ^-1 = 244.14 Hz
 // 8 bits duty cicle:
 // TMR2 = PR2 + 1 (when TMR2 overflows, LOW to HIGH)/ CCPR1L:CCP1CON<5:4>
 
+
+//------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------//
+//IOs and code definitions
 sbit EMG at RB0_bit;                                                            // Pin6: Emergency check
 sbit PWM_OUT at RB3_bit;                                                        // Pin9: PWM control output
 sbit POWER at RB5_bit;                                                          // Pin11: power on/ off indicator
 sbit SENSOR_DATA at RA0_bit;                                                    // Pin17: DHT11 sensor (humidity + temperature)
 sbit DATA_DIR at TRISA0_bit;                                                    // Dinamic I/O configuration
 
-#define       WAIT_TIME          1200                                           // Empiric value, adj to avoid CheckSum error: DHT11 sensor read cycle can't be faster than 1s
 #define       BUFFER_SIZE        4                                              // Store the received UART string + null terminator
+#define       WAIT_TIME          1200                                           // Empiric value, adj to avoid CheckSum error: DHT11 sensor read cycle can't be faster than 1s
 #define       OFFSET_TEMP        2                                              // Temperature offset for DHT11 sensor
-#define       OFFSET_HUM         7                                              // Humidity offset for DHT11 sensor
+#define       OFFSET_HUM         6                                              // Humidity offset for DHT11 sensor
 
 
 //------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------//
 //Local functions
 void PWM();                                                                     // Update the PWM output + send callback to the HMI main page "n0 field"
 
-void StartSignal();                                                             // Send start pulse to sensor DHT11
-void sensor();                                                                  // DHT11 Sensor data handling
-unsigned short CheckResponse();                                                 // Check if the sensor is alive
-unsigned short ReadByte();                                                      // Build the sensor data byte
+void startSensor();                                                             // Send start pulse to sensor DHT11
+void sensorHandling();                                                          // DHT11 Sensor data handling
+unsigned short sensorAlive();                                                   // Check if the sensor is alive
+unsigned short sensorReadByte();                                                // Build the sensor data byte
 
 void sendPWM();                                                                 // Update the HMI with current PWM
 void sendData(char val);                                                        // Update the HMI with current temperature/ humidity
@@ -45,7 +101,7 @@ void sendGraph(char id);                                                        
 void errorState(char id, char val);                                             // Update the HMI with current errors
 
 void hmi_nameParameter();                                                       // Add ".val=" to the string
-void commonData();                                                              // Add a "common measured data" to the string (can be the power, temperature or humidity)
+void hmi_commonData();                                                          // Add a "common measured data" to the string (can be the power, temperature or humidity)
 void hmi_endCommand();                                                          // Add the "end of Nextion command" to the string
 void cleanBuffer();                                                             // Clean the UART buffer
 
@@ -130,7 +186,7 @@ void interrupt(){
         }
 
         if(PIR1.TMR1IF){
-        // SENSOR check interruption                                            // Interrupt after 256us (sensor time out)
+        // SENSOR check interruption                                            // Timer1 Interrupt after 256us (sensor time out)
            PIR1.TMR1IF  = 0;                                                    // Clear the interrupt flag
            TOUT = 1;                                                            // Set the time out flag
            T1CON.TMR1ON = 0;                                                    // Stop TMR1
@@ -143,16 +199,18 @@ void interrupt(){
 //------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------//
 void main(){
        CMCON       = 0x07;                                                      // Disable comparators
-       OPTION_REG  = 0x86;                                                      // RBPU = 1 (PortB pull ups disabled)| INTEDG = 0 (RB0/INT falling edge9 | PSA = 0 (Prescaler Timer0| PS<2:0> = 110 (Prescaler 1:128)
-       INTE_bit    = 0x01;                                                      // Enable external interrup for emergency hw check
+       OPTION_REG  = 0x80;                                                      // RBPU = 1 (PortB pull ups disabled)| INTEDG = 0 (RB0/INT falling edge)
+       INTE_bit    = 0x01;                                                      // Enable external interrup for emergency hardware button on pin6
        GIE_bit     = 0x01;                                                      // Bit 7 of INTCON register (Global Interrupt Enable bit)
        PEIE_bit    = 0x01;                                                      // Bit 6 of INTCON register (Peripheral Interrupt Enable bit)
 
+       // Timer1 for sensor data
        PIE1.TMR1IE = 0x01;                                                      // Enable Timer1 interrupt
 
+       // Timer2 for PWM
        PR2         = 0xFF;                                                      // Starts the TMR2 overflow register in the maximum count: 255
-       T2CON       = 0x06;                                                      // Enable TMR2 and prescaler as 1:16
-       CCP1CON     = 0x0C;                                                      // Enable PWM  mode(12)
+       T2CON       = 0x06;                                                      // Enable TMR2 and prescaler as 1:16 (PWM frequency = 244.14 Hz)
+       CCP1CON     = 0x0C;                                                      // Enable PWM
        CCPR1L      = 0x00;                                                      // Start the PWM in 0%
 
        delay_ms(1000);                                                          // Delay before start the USART
@@ -191,8 +249,8 @@ void main(){
                }
                sensorTick++;
                if(sensorTick > WAIT_TIME){                                      // minimal time between DHT11 reading = 1s
-                  StartSignal();
-                  sensor();
+                  startSensor();
+                  sensorHandling();
                   sensorTick = 0;
                }
            }
@@ -225,13 +283,14 @@ void PWM(){
 
 //------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------//
 // Send start pulse to sensor DHT11
-void StartSignal(){
+void startSensor(){
       DATA_DIR = 0;                                                             // Set TRISA0 as output
       // Pulse generation
       SENSOR_DATA = 0;                                                          // Low on pin17 (DHT11)
       Delay_ms(18);                                                             // Keep low least 18us, the sensor detect the MCU "request signal"
       SENSOR_DATA = 1;                                                          // High
 
+      // Timer1
       T1CON = 0x00;                                                             // Prescaler 1:1, and Timer1 is off initially
       PIR1.TMR1IF = 0x00;                                                       // Clear TMR INT Flag bit
       TMR1L = 0x00;                                                             // Set TMR1L = 0
@@ -250,10 +309,10 @@ void StartSignal(){
 
 //------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------//
 // DHT11 Sensor data handling
-void sensor(){
+void sensorHandling(){
   unsigned short check;
   static char dataSend = 0x00;                                                  // Count the time to make a "delay" to send data to the graph
-  check = CheckResponse();                                                      // When the sensor is OK, check = 1
+  check = sensorAlive();                                                        // When the sensor is OK, check = 1
 
   if (!check){
     errorState('0','1');                                                        // SENSOR TIMEOUT: Tell HMI there is a sensor error sending: "er0.val=1"
@@ -265,11 +324,11 @@ void sensor(){
 
   else{
         // Get the sensor data. Note: RH_Byte2 and T_Byte2 are always "0" on DHT11 (no decimal resolution is provided)
-        RH_Byte1 = ReadByte();
-        RH_Byte2 = ReadByte();
-        T_Byte1 = ReadByte();
-        T_Byte2 = ReadByte();
-        CheckSum = ReadByte();
+        RH_Byte1 = sensorReadByte();
+        RH_Byte2 = sensorReadByte();
+        T_Byte1 = sensorReadByte();
+        T_Byte2 = sensorReadByte();
+        CheckSum = sensorReadByte();
         
         // Check for error in Data reception
         if ((CheckSum == (RH_Byte1 + RH_Byte2 + T_Byte1 + T_Byte2) & 0xFF) && !sensorError){ // Force ACK to clear "!errorSensor"
@@ -312,9 +371,9 @@ void sensor(){
 
 //------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------//
 // Check if the sensor is alive
-unsigned short CheckResponse(){
+unsigned short sensorAlive(){
       TOUT = 0;                                                                 // Reset Time Out flag
-      T1CON.TMR1ON = 1;                                                         // Start TMR1 (previoulsy reseted in startSignal()
+      T1CON.TMR1ON = 1;                                                         // Start TMR1 (previoulsy reseted in startSensor()
 
       while(!SENSOR_DATA && !TOUT);                                             // Wait for the "sensor response" on pin17 (high pulse from sensor, of ca. 80us)
       if(TOUT)                                                                  // If there's no response within 256us, the Timer1 overflows, Time Out
@@ -338,7 +397,7 @@ unsigned short CheckResponse(){
 
 //------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------//
 // Build the sensor data byte
-unsigned short ReadByte(){
+unsigned short sensorReadByte(){
   unsigned short num = 0, i;
   DATA_DIR = 1;                                                                 // Set TRISA0 as input
 
@@ -365,7 +424,7 @@ unsigned short ReadByte(){
    TXREG = 'n'; cleanBuffer();
    TXREG = '0'; cleanBuffer();
    hmi_nameParameter();
-   commonData();
+   hmi_commonData();
 }
 
 
@@ -376,7 +435,7 @@ unsigned short ReadByte(){
    TXREG = 'x'; cleanBuffer();
    TXREG = val; cleanBuffer();
    hmi_nameParameter();
-   commonData();
+   hmi_commonData();
 }
 
 
@@ -397,7 +456,7 @@ unsigned short ReadByte(){
    }
    cleanBuffer();
    hmi_nameParameter();
-   commonData();
+   hmi_commonData();
    hmi_endCommand();
 }
 
@@ -428,7 +487,7 @@ void hmi_nameParameter(){
 
 //------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------//
 // Add a "common measured data" to the string (can be the power, temperature or humidity)
-void commonData(){
+void hmi_commonData(){
    TXREG = TEMP[0]; cleanBuffer();
    TXREG = TEMP[1]; cleanBuffer();
    TXREG = TEMP[2]; cleanBuffer();
