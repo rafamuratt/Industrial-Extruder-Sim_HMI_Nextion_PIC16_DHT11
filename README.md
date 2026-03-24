@@ -22,7 +22,7 @@ This project simulates real-world industrial extrusion processes, featuring:
 📂 Project Structure  
 /HMI_Nextion: Contains the .HMI source file and the ready-to-flash .TFT binary  
 /PIC_Source: MikroC project files with compiled .hex, source code, and Fuse bits setup.  
-/Photos & Screenshots: Screenshot of Proteus <--> Nextion simulation, some project photos and a folder with HMI screenshots.
+/Photos & Screenshots: Screenshot of Proteus <--> Nextion simulation, some project photos and a folder with HMI screenshots.  
 /Proteus8.6_SP2_Sim: Proteus 8 simulation files (requires Virtual Serial Port app to link with Nextion Simulation)
 
 ⚙ Operational Flow  
