@@ -1,6 +1,6 @@
 [![License: MT-SAL v1.0](https://img.shields.io/badge/License-MT--SAL%20v1.0-blue)](https://github.com/rafamuratt/Industrial-Extruder-Sim_HMI_Nextion_PIC16_DHT11?tab=License-1-ov-file)
 
-# Industrial-Extruder-Sim_HMI_Nextion_PIC16_DHT11
+# Industrial-Extruder-Sim HMI Nextion PIC16 DHT11
 
 Bare-Metal Implementation: This project operates entirely at the register level without external dependencies.  
 The firmware is fully optimized for the PIC16F628A, maintaining a lean footprint with 16% ROM remaining for future feature expansion.    
@@ -13,39 +13,39 @@ This project integrates a PIC16F628A microcontroller with a Nextion Intelligent 
 ## 🚀 System Overview  
 
 This project simulates real-world industrial extrusion processes, featuring:  
-* Digital Twin Interface: Replicates a Reifenhäuser extruder line with animated GIFs synchronized to motor PWM speed.  
-* Environmental Monitoring: Real-time waveform plotting for pre-heater temperature and input humidity using a DHT11 sensor.  
-* Safety Logic: A fail-safe hierarchy where Emergency Stops and Sensor Faults trigger an immediate hardware halt and system lockout.  
-* Industrial UI Standards: Uses standardized color-coded load indicators (Green/Orange/Red) and an "Acknowledge" (ACK) workflow for error recovery.  
+* **Digital Twin Interface:** Replicates a Reifenhäuser extruder line with animated GIFs synchronized to motor PWM speed.  
+* **Environmental Monitoring:** Real-time waveform plotting for pre-heater temperature and input humidity using a DHT11 sensor.  
+* **Safety Logic:** A fail-safe hierarchy where Emergency Stops and Sensor Faults trigger an immediate hardware halt and system lockout.  
+* **Industrial UI Standards:** Uses standardized color-coded load indicators (Green/Orange/Red) and an "Acknowledge" (ACK) workflow for error recovery.  
 
 ---
 
 ## 🛠 Hardware Stack  
 
-* Microcontroller: PIC16F628A (@ 4MHz Internal)  
-* HMI: Nextion NX8048P050-011R-Y (Intelligent Series)  
-* Sensor: DHT11 (Temperature & Humidity)  
-* Communication: UART @ 9600 bps
+* **Microcontroller:** PIC16F628A (@ 4MHz Internal)  
+* **HMI:** Nextion NX8048P050-011R-Y (Intelligent Series)  
+* **Sensor:** DHT11 (Temperature & Humidity)  
+* **Communication:** UART @ 9600 bps
 
 ---
 
 ## 📂 Project Structure  
 
 ```
-/HMI_Nextion: Contains the .HMI source file and the ready-to-flash .TFT binary  
-/PIC_Source: MikroC project files with compiled .hex, source code, and Fuse bits setup.  
-/Photos & Screenshots: Screenshot of Proteus <--> Nextion simulation, some project photos and a folder with HMI screenshots.  
-/Proteus8.6_SP2_Sim: Proteus 8 simulation files (requires Virtual Serial Port app to link with Nextion Simulation)
+/HMI_Nextion            — Contains the .HMI source file and the ready-to-flash .TFT binary  
+/PIC_Source             — MikroC project files with compiled .hex, source code, and Fuse bits setup.  
+/Photos & Screenshots   — Screenshot of Proteus <--> Nextion simulation, some project photos and a folder with HMI screenshots.  
+/Proteus8.6_SP2_Sim     — Proteus 8 simulation files (requires Virtual Serial Port app to link with Nextion Simulation)
 ```
 
 ---
 
 ## ⚙ Operational Flow  
 
-* Normal Operation: System runs with animated motor feedback and live sensor plots.  
-* Error Detection: Sensor data is validated via CheckSum. Disconnection or data corruption displays ### and triggers an error.  
-* Emergency Stop: Immediate cessation of motor PWM; requires manual release + system ACK to reset.  
-* Error Recovery: System remains in "Error" status until the physical issue is resolved and acknowledged.  
+* **Normal Operation:** System runs with animated motor feedback and live sensor plots.  
+* **Error Detection:** Sensor data is validated via CheckSum. Disconnection or data corruption displays ### and triggers an error.  
+* **Emergency Stop:** Immediate cessation of motor PWM; requires manual release + system ACK to reset.  
+* **Error Recovery:** System remains in "Error" status until the physical issue is resolved and acknowledged.  
 * Warning message pops up if the motor speed is over 89%
 
 ---
