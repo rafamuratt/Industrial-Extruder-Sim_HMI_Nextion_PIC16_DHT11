@@ -1,3 +1,5 @@
+![License: MT-SAL v1.0](https://img.shields.io/badge/License-MT--SAL%20v1.0-blue)
+
 # Industrial-Extruder-Sim_HMI_Nextion_PIC16_DHT11
 
 Bare-Metal Implementation: This project operates entirely at the register level without external dependencies.  
