@@ -1,4 +1,4 @@
-![License: MT-SAL v1.0](https://img.shields.io/badge/License-MT--SAL%20v1.0-blue)
+[![License: MT-SAL v1.0](https://img.shields.io/badge/License-MT--SAL%20v1.0-blue)](https://github.com/rafamuratt/Industrial-Extruder-Sim_HMI_Nextion_PIC16_DHT11?tab=License-1-ov-file)
 
 # Industrial-Extruder-Sim_HMI_Nextion_PIC16_DHT11
 
