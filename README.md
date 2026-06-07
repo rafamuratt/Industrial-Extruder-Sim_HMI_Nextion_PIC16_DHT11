@@ -50,8 +50,9 @@ This project simulates real-world industrial extrusion processes, featuring:
 
 ## 📜 License
 
-This project is licensed under the GNU General Public License v3.0 (GPL-3.0).  
-See the full license text at: https://www.gnu.org/licenses/gpl-3.0.html.
+This project is licensed under the **Murat-Tech Source Available License v1.0**.  
+Free for personal and educational use with attribution.  
+Commercial use requires written authorization — contact info@murat-tech.eu or visit https://murat-tech.eu/
 
 ---
 
