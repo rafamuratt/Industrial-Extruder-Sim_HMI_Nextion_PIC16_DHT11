@@ -1,11 +1,15 @@
 /* 
    MURAT-TECH HMI DIGITAL TWIN INTERFACE v.1.00
-   By B.Eng. Rafa Muratt 03.2026
+   By rafamuratt 03.2026
    MURAT-TECH CHANNEL: https://www.youtube.com/@Murat-TechChannel-EN
    MURAT-TECH HUB: https://murat-tech.eu/
    
    License
-   This project is licensed under the Creative Commons Attribution-ShareAlike 4.0 International (CC BY-SA 4.0).
+   This project is licensed under the Murat-Tech Source Available License v1.0. 
+   Free for personal and educational use with attribution.
+   Commercial use requires written authorization — contact info@murat-tech.eu
+   https://github.com/rafamuratt/Industrial-Extruder-Sim_HMI_Nextion_PIC16_DHT11?tab=License-1-ov-file
+   
    If this project is helpfull for your application, please consider to support:
    https://www.paypal.com/donate/?hosted_button_id=8S8BJ9TT368VN
    
