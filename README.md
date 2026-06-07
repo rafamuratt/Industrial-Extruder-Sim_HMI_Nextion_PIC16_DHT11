@@ -54,11 +54,12 @@ This project simulates real-world industrial extrusion processes, featuring:
 
 This project is licensed under the **Murat-Tech Source Available License v1.0**.  
 Free for personal and educational use with attribution.  
-Commercial use requires written authorization — contact info@murat-tech.eu or visit https://murat-tech.eu/
+Commercial use requires written authorization — contact info@murat-tech.eu  
 
 ---
 
-☕ If this project is helpful for your application, please consider supporting: https://www.paypal.com/donate/?hosted_button_id=8S8BJ9TT368VN
+☕ If this project is helpful for your application, please consider supporting: 
+https://www.paypal.com/donate/?hosted_button_id=8S8BJ9TT368VN
 
 Built by **rafamuratt**: https://murat-tech.eu/
 Murat-Tech Channel: https://www.youtube.com/@Murat-TechChannel-EN
